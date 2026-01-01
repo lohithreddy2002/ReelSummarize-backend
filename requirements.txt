@@ -1,0 +1,10 @@
+fastapi==0.109.2
+uvicorn[standard]==0.27.1
+yt-dlp
+google-genai
+python-multipart==0.0.9
+pydantic==2.6.1
+python-dotenv==1.0.1
+aiofiles==23.2.1
+httpx==0.26.0
+mangum==0.17.0

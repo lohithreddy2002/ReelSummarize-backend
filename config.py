@@ -90,3 +90,39 @@ Please provide:
 
 Keep the summary concise but informative. Format it nicely for mobile display."""
 
+# System instruction for location search
+SEARCH_SYSTEM_INSTRUCTION = """You are a helpful assistant that analyzes travel content and finds relevant locations. Always respond with valid JSON arrays only, no additional text."""
+
+# Prompt template for semantic location search
+# Use {query} and {reels_context} as placeholders
+SEARCH_LOCATIONS_PROMPT = """You are helping a user search through their saved travel reels to find locations that match their query.
+
+USER'S SEARCH QUERY: "{query}"
+
+Here are the saved reels with their summaries and locations:
+
+{reels_context}
+
+Your task:
+1. Analyze each reel's summary and locations
+2. Determine which locations are relevant to the user's query "{query}"
+3. A location is relevant if:
+   - The summary mentions themes/activities related to the query
+   - The location name suggests relevance (e.g., "Swiss Alps" for "winter destinations")
+   - The content of the reel matches what the user is looking for
+
+Return ONLY a JSON array of matching locations. For each match, include:
+- reel_id: the ID of the reel
+- location_name: the name of the matching location
+- relevance_reason: a brief explanation (10-20 words) of why this matches the query
+
+Example output format:
+[
+  {{"reel_id": "123", "location_name": "Swiss Alps", "relevance_reason": "Snow-covered mountains perfect for winter skiing and snowboarding adventures"}},
+  {{"reel_id": "456", "location_name": "Aspen, Colorado", "relevance_reason": "Famous winter resort with excellent skiing conditions"}}
+]
+
+If no locations match the query, return an empty array: []
+
+Important: Only include locations that genuinely match the search intent. Don't force matches."""
+

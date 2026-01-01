@@ -16,6 +16,8 @@ from config import (
     SYSTEM_INSTRUCTION,
     VIDEO_SUMMARY_PROMPT,
     METADATA_SUMMARY_PROMPT,
+    SEARCH_SYSTEM_INSTRUCTION,
+    SEARCH_LOCATIONS_PROMPT,
 )
 
 
@@ -372,3 +374,128 @@ def get_summarizer() -> Summarizer:
     if summarizer is None:
         summarizer = Summarizer()
     return summarizer
+
+
+async def search_locations_with_ai(
+    query: str, 
+    reels_data: list[dict]
+) -> list[dict]:
+    """
+    Use Gemini AI to semantically search locations based on a query.
+    
+    Args:
+        query: User's search query (e.g., "winter destinations", "beach vacation")
+        reels_data: List of reels with their summaries and locations
+        
+    Returns:
+        List of matched locations with relevance reasons
+    """
+    if not GEMINI_API_KEY:
+        raise SummarizationError("Gemini API is not configured")
+    
+    # Build context for AI
+    reels_context = []
+    for reel in reels_data:
+        if not reel.get('locations'):
+            continue
+        
+        reel_info = {
+            'id': reel.get('id', ''),
+            'title': reel.get('title', 'Untitled'),
+            'summary': reel.get('summary', ''),
+            'url': reel.get('url', ''),
+            'locations': [
+                {
+                    'name': loc.get('name', ''),
+                    'latitude': loc.get('latitude', 0),
+                    'longitude': loc.get('longitude', 0),
+                    'display_name': loc.get('display_name', '')
+                }
+                for loc in reel.get('locations', [])
+            ]
+        }
+        reels_context.append(reel_info)
+    
+    if not reels_context:
+        return []
+    
+    # Create prompt for AI using config template
+    search_prompt = SEARCH_LOCATIONS_PROMPT.format(
+        query=query,
+        reels_context=reels_context
+    )
+
+    def _search():
+        try:
+            client = genai.Client(api_key=GEMINI_API_KEY)
+            
+            contents = [
+                types.Content(
+                    role="user",
+                    parts=[types.Part.from_text(text=search_prompt)],
+                ),
+            ]
+            
+            config = types.GenerateContentConfig(
+                system_instruction=[
+                    types.Part.from_text(text=SEARCH_SYSTEM_INSTRUCTION),
+                ],
+            )
+            
+            response = client.models.generate_content(
+                model=GEMINI_MODEL,
+                contents=contents,
+                config=config,
+            )
+            
+            return response.text
+        except Exception as e:
+            raise SummarizationError(f"Failed to search locations: {str(e)}")
+    
+    loop = asyncio.get_event_loop()
+    response_text = await loop.run_in_executor(None, _search)
+    
+    # Parse AI response
+    try:
+        import json
+        # Clean up the response (remove markdown code blocks if present)
+        clean_response = response_text.strip()
+        if clean_response.startswith('```'):
+            # Remove code block markers
+            clean_response = clean_response.split('\n', 1)[1]  # Remove first line
+            if clean_response.endswith('```'):
+                clean_response = clean_response[:-3]
+            clean_response = clean_response.strip()
+        
+        matches = json.loads(clean_response)
+        
+        # Build result with full location data
+        result = []
+        for match in matches:
+            reel_id = match.get('reel_id', '')
+            location_name = match.get('location_name', '')
+            relevance = match.get('relevance_reason', '')
+            
+            # Find the reel and location
+            for reel in reels_data:
+                if reel.get('id') == reel_id:
+                    for loc in reel.get('locations', []):
+                        if loc.get('name', '').lower() == location_name.lower():
+                            result.append({
+                                'name': loc.get('name', ''),
+                                'latitude': loc.get('latitude', 0),
+                                'longitude': loc.get('longitude', 0),
+                                'display_name': loc.get('display_name', ''),
+                                'source_url': reel.get('url', ''),
+                                'source_title': reel.get('title', ''),
+                                'reel_id': reel_id,
+                                'relevance_reason': relevance,
+                            })
+                            break
+                    break
+        
+        return result
+    except Exception as e:
+        print(f"Failed to parse AI response: {e}")
+        print(f"Response was: {response_text}")
+        return []

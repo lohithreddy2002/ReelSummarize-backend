@@ -3,11 +3,21 @@ ReelSummarize Backend API
 FastAPI server for downloading and summarizing Instagram reels
 """
 import asyncio
+import logging
+import sys
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 
 from config import HOST, PORT, CORS_ORIGINS, GEMINI_API_KEY, IS_VERCEL
+
+# Configure logging for Vercel (stdout with immediate flush)
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[logging.StreamHandler(sys.stdout)]
+)
+logger = logging.getLogger(__name__)
 from schemas import (
     SummarizeRequest,
     SummarizeResponse,
@@ -16,9 +26,12 @@ from schemas import (
     InfoResponse,
     MediaInfo,
     LocationInfo,
+    SearchLocationsRequest,
+    SearchLocationsResponse,
+    MatchedLocation,
 )
 from services.downloader import downloader, DownloadError
-from services.summarizer import get_summarizer, SummarizationError, extract_title_from_summary
+from services.summarizer import get_summarizer, SummarizationError, extract_title_from_summary, search_locations_with_ai
 from services.geocoder import geocoder
 
 
@@ -31,17 +44,17 @@ async def lifespan(app: FastAPI):
     """Application lifespan manager"""
     if IS_VERCEL:
         # Serverless: minimal startup, no persistent state
-        print("🚀 ReelSummarize Backend (Serverless)")
+        logger.info("🚀 ReelSummarize Backend (Serverless)")
     else:
-        print("🚀 Starting ReelSummarize Backend...")
-        print(f"📡 Server running on http://{HOST}:{PORT}")
-    print(f"🔑 Gemini API: {'Configured' if GEMINI_API_KEY else 'NOT CONFIGURED'}")
+        logger.info("🚀 Starting ReelSummarize Backend...")
+        logger.info(f"📡 Server running on http://{HOST}:{PORT}")
+    logger.info(f"🔑 Gemini API: {'Configured' if GEMINI_API_KEY else 'NOT CONFIGURED'}")
     yield
     # Cleanup on shutdown (only for non-serverless)
     if not IS_VERCEL:
-        print("🧹 Cleaning up downloads...")
+        logger.info("🧹 Cleaning up downloads...")
         downloader.cleanup_all()
-        print("👋 Shutting down...")
+        logger.info("👋 Shutting down...")
 
 
 # Create FastAPI app
@@ -139,7 +152,7 @@ async def summarize_media(
     
     try:
         # Step 1: Download the media
-        print(f"📥 Downloading: {request.url}")
+        logger.info(f"📥 Downloading: {request.url}")
         download_info = await downloader.download_media(request.url)
         request_id = download_info.get('request_id')
         
@@ -155,7 +168,7 @@ async def summarize_media(
         )
         
         # Step 2: Summarize the content
-        print(f"🤖 Generating summary...")
+        logger.info("🤖 Generating summary...")
         summarizer = get_summarizer()
         
         result = await summarizer.summarize(
@@ -171,17 +184,17 @@ async def summarize_media(
         
         if summary_text and result.get('success'):
             # Extract AI-generated title
-            print(f"🏷️ Extracting title from summary...")
+            logger.info("🏷️ Extracting title from summary...")
             generated_title, _ = extract_title_from_summary(summary_text)
             if generated_title:
-                print(f"✅ Generated title: {generated_title}")
+                logger.info(f"✅ Generated title: {generated_title}")
             
             # Extract locations and geocode them
-            print(f"📍 Extracting locations from summary...")
+            logger.info("📍 Extracting locations from summary...")
             location_names = geocoder.extract_locations_from_text(summary_text)
             
             if location_names:
-                print(f"📍 Found locations: {location_names}")
+                logger.info(f"📍 Found locations: {location_names}")
                 geocoded = await geocoder.geocode_multiple(location_names)
                 if geocoded:
                     locations_list = [
@@ -193,7 +206,7 @@ async def summarize_media(
                         )
                         for loc in geocoded
                     ]
-                    print(f"✅ Geocoded {len(locations_list)} locations")
+                    logger.info(f"✅ Geocoded {len(locations_list)} locations")
         
         # Schedule cleanup in background
         if request_id:
@@ -261,7 +274,7 @@ async def summarize_quick(request: SummarizeRequest):
     
     try:
         # Get media info without downloading
-        print(f"📋 Fetching metadata: {request.url}")
+        logger.info(f"📋 Fetching metadata: {request.url}")
         info = await downloader.get_media_info(request.url)
         
         media_info = MediaInfo(
@@ -275,7 +288,7 @@ async def summarize_quick(request: SummarizeRequest):
         )
         
         # Summarize from metadata only
-        print(f"🤖 Generating summary from metadata...")
+        logger.info("🤖 Generating summary from metadata...")
         summarizer = get_summarizer()
         
         result = await summarizer.summarize(
@@ -291,17 +304,17 @@ async def summarize_quick(request: SummarizeRequest):
         
         if summary_text and result.get('success'):
             # Extract AI-generated title
-            print(f"🏷️ Extracting title from summary...")
+            logger.info("🏷️ Extracting title from summary...")
             generated_title, _ = extract_title_from_summary(summary_text)
             if generated_title:
-                print(f"✅ Generated title: {generated_title}")
+                logger.info(f"✅ Generated title: {generated_title}")
             
             # Extract locations and geocode them
-            print(f"📍 Extracting locations from summary...")
+            logger.info("📍 Extracting locations from summary...")
             location_names = geocoder.extract_locations_from_text(summary_text)
             
             if location_names:
-                print(f"📍 Found locations: {location_names}")
+                logger.info(f"📍 Found locations: {location_names}")
                 geocoded = await geocoder.geocode_multiple(location_names)
                 if geocoded:
                     locations_list = [
@@ -313,7 +326,7 @@ async def summarize_quick(request: SummarizeRequest):
                         )
                         for loc in geocoded
                     ]
-                    print(f"✅ Geocoded {len(locations_list)} locations")
+                    logger.info(f"✅ Geocoded {len(locations_list)} locations")
         
         return SummarizeResponse(
             success=result.get('success', False),
@@ -340,6 +353,86 @@ async def summarize_quick(request: SummarizeRequest):
         raise HTTPException(
             status_code=500,
             detail=f"Unexpected error: {str(e)}",
+        )
+
+
+@app.post("/api/search-locations", response_model=SearchLocationsResponse)
+async def search_locations(request: SearchLocationsRequest):
+    """
+    Semantic search for locations across saved reels.
+    
+    Uses AI to match locations based on the user's query, considering
+    the summary content and location context from each reel.
+    """
+    if not GEMINI_API_KEY:
+        raise HTTPException(
+            status_code=503,
+            detail="Gemini API is not configured. Please set GEMINI_API_KEY environment variable.",
+        )
+    
+    try:
+        logger.info(f"🔍 Searching locations with query: '{request.query}'")
+        logger.info(f"📚 Searching through {len(request.reels)} reels")
+        
+        # Convert reels to dict format for the search function
+        reels_data = [
+            {
+                'id': reel.id,
+                'url': reel.url,
+                'title': reel.title,
+                'summary': reel.summary,
+                'locations': [
+                    {
+                        'name': loc.name,
+                        'latitude': loc.latitude,
+                        'longitude': loc.longitude,
+                        'display_name': loc.display_name,
+                    }
+                    for loc in (reel.locations or [])
+                ] if reel.locations else []
+            }
+            for reel in request.reels
+        ]
+        
+        # Perform AI-powered search
+        matched = await search_locations_with_ai(request.query, reels_data)
+        
+        # Convert to response format
+        matched_locations = [
+            MatchedLocation(
+                name=loc['name'],
+                latitude=loc['latitude'],
+                longitude=loc['longitude'],
+                display_name=loc.get('display_name'),
+                source_url=loc['source_url'],
+                source_title=loc.get('source_title'),
+                reel_id=loc['reel_id'],
+                relevance_reason=loc.get('relevance_reason'),
+            )
+            for loc in matched
+        ]
+        
+        logger.info(f"✅ Found {len(matched_locations)} matching locations")
+        
+        return SearchLocationsResponse(
+            success=True,
+            query=request.query,
+            matched_locations=matched_locations,
+            total_matches=len(matched_locations),
+        )
+        
+    except SummarizationError as e:
+        logger.error(f"❌ Search failed: {e}")
+        return SearchLocationsResponse(
+            success=False,
+            query=request.query,
+            error=str(e),
+        )
+    except Exception as e:
+        logger.error(f"❌ Unexpected error in search: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Search failed: {str(e)}",
         )
 
 

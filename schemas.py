@@ -63,3 +63,39 @@ class InfoResponse(BaseModel):
     media_info: Optional[MediaInfo] = None
     error: Optional[str] = None
 
+
+class ReelData(BaseModel):
+    """Schema for reel data in search request"""
+    id: str
+    url: str
+    title: Optional[str] = None
+    summary: Optional[str] = None
+    locations: Optional[List[LocationInfo]] = None
+
+
+class SearchLocationsRequest(BaseModel):
+    """Request schema for semantic location search"""
+    query: str = Field(..., description="Search query (e.g., 'winter destinations', 'beach vacation')")
+    reels: List[ReelData] = Field(..., description="List of saved reels to search through")
+
+
+class MatchedLocation(BaseModel):
+    """Schema for a location that matches the search query"""
+    name: str
+    latitude: float
+    longitude: float
+    display_name: Optional[str] = None
+    source_url: str
+    source_title: Optional[str] = None
+    reel_id: str
+    relevance_reason: Optional[str] = None
+
+
+class SearchLocationsResponse(BaseModel):
+    """Response schema for location search"""
+    success: bool
+    query: str
+    matched_locations: List[MatchedLocation] = []
+    total_matches: int = 0
+    error: Optional[str] = None
+

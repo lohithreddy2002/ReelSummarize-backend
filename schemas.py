@@ -23,6 +23,7 @@ class MediaInfo(BaseModel):
     uploader: Optional[str] = None
     thumbnail: Optional[str] = None
     platform: Optional[str] = None
+    video_url: Optional[str] = None  # Direct video URL for local download
 
 
 class LocationInfo(BaseModel):
@@ -97,5 +98,17 @@ class SearchLocationsResponse(BaseModel):
     query: str
     matched_locations: List[MatchedLocation] = []
     total_matches: int = 0
+    error: Optional[str] = None
+
+
+class GeocodeRequest(BaseModel):
+    """Request schema for geocoding endpoint (used with local LLM mode)"""
+    location_names: List[str] = Field(..., description="List of location names to geocode")
+
+
+class GeocodeResponse(BaseModel):
+    """Response schema for geocoding endpoint"""
+    success: bool
+    locations: List[LocationInfo] = []
     error: Optional[str] = None
 

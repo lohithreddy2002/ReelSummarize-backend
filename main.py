@@ -29,6 +29,8 @@ from schemas import (
     SearchLocationsRequest,
     SearchLocationsResponse,
     MatchedLocation,
+    GeocodeRequest,
+    GeocodeResponse,
 )
 from services.downloader import downloader, DownloadError
 from services.summarizer import get_summarizer, SummarizationError, extract_title_from_summary, search_locations_with_ai
@@ -113,6 +115,7 @@ async def get_media_info(request: InfoRequest):
                 uploader=info.get('uploader'),
                 thumbnail=info.get('thumbnail'),
                 platform=info.get('platform'),
+                video_url=info.get('video_url'),
             ),
         )
     except DownloadError as e:
@@ -353,6 +356,45 @@ async def summarize_quick(request: SummarizeRequest):
         raise HTTPException(
             status_code=500,
             detail=f"Unexpected error: {str(e)}",
+        )
+
+
+@app.post("/api/geocode", response_model=GeocodeResponse)
+async def geocode_locations(request: GeocodeRequest):
+    """
+    Geocode a list of location names to get coordinates.
+    
+    This endpoint is used by clients running local VLM models
+    to geocode locations extracted from locally-generated summaries.
+    Only this endpoint and health checks should be called when using local models.
+    """
+    try:
+        logger.info(f"📍 Geocoding {len(request.location_names)} locations")
+        
+        geocoded = await geocoder.geocode_multiple(request.location_names)
+        
+        locations_list = [
+            LocationInfo(
+                name=loc.name,
+                latitude=loc.latitude,
+                longitude=loc.longitude,
+                display_name=loc.display_name,
+            )
+            for loc in geocoded
+        ]
+        
+        logger.info(f"✅ Successfully geocoded {len(locations_list)} locations")
+        
+        return GeocodeResponse(
+            success=True,
+            locations=locations_list,
+        )
+        
+    except Exception as e:
+        logger.error(f"❌ Geocoding error: {e}")
+        return GeocodeResponse(
+            success=False,
+            error=str(e),
         )
 
 

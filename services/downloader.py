@@ -64,6 +64,25 @@ class MediaDownloader:
             with yt_dlp.YoutubeDL(self._get_info_opts()) as ydl:
                 try:
                     info = ydl.extract_info(url, download=False)
+                    
+                    # Extract direct video URL if available
+                    video_url = None
+                    if 'url' in info:
+                        # For single video formats
+                        video_url = info.get('url')
+                    elif 'formats' in info and info['formats']:
+                        # Find the best video format
+                        video_formats = [f for f in info['formats'] if f.get('vcodec') != 'none']
+                        if video_formats:
+                            # Prefer mp4 format, then best quality
+                            mp4_format = next((f for f in video_formats if f.get('ext') == 'mp4'), None)
+                            if mp4_format:
+                                video_url = mp4_format.get('url')
+                            else:
+                                # Get the format with highest quality
+                                best_format = max(video_formats, key=lambda f: f.get('height', 0) or f.get('quality', 0))
+                                video_url = best_format.get('url')
+                    
                     return {
                         'id': info.get('id', ''),
                         'title': info.get('title', ''),
@@ -74,6 +93,7 @@ class MediaDownloader:
                         'view_count': info.get('view_count', 0),
                         'like_count': info.get('like_count', 0),
                         'platform': info.get('extractor_key', 'Unknown'),
+                        'video_url': video_url,
                     }
                 except Exception as e:
                     raise DownloadError(f"Failed to extract info: {str(e)}")

@@ -22,12 +22,12 @@ MAPBOX_ACCESS_TOKEN = os.getenv("MAPBOX_ACCESS_TOKEN", "")
 
 # yt-dlp: path to a Netscape-format cookies.txt for sites (e.g. Instagram) that
 # block anonymous requests. Export from a logged-in browser session.
-# On Vercel there's no repo file to point at, so instead set YTDLP_COOKIES_B64
+# On serverless the repo is read-only, so instead set YTDLP_COOKIES_B64
 # (base64 of the cookies.txt content) and it's decoded to /tmp on cold start.
 YTDLP_COOKIES_FILE = os.getenv("YTDLP_COOKIES_FILE", "")
 _cookies_b64 = os.getenv("YTDLP_COOKIES_B64", "")
 if _cookies_b64 and not YTDLP_COOKIES_FILE:
-    _cookies_path = Path("/tmp/cookies.txt") if IS_VERCEL else Path("cookies.txt")
+    _cookies_path = Path("/tmp/cookies.txt")
     try:
         _cookies_path.write_bytes(base64.b64decode(_cookies_b64))
         YTDLP_COOKIES_FILE = str(_cookies_path)

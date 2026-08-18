@@ -18,7 +18,9 @@ env/
 # Local files
 downloads/
 *.log
+.env
 .env.local
+cookies.txt
 
 # Development
 uv.lock

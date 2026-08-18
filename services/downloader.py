@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Optional, Dict, Any
 import yt_dlp
 
-from config import DOWNLOAD_DIR, MAX_VIDEO_DURATION
+from config import DOWNLOAD_DIR, MAX_VIDEO_DURATION, YTDLP_COOKIES_FILE
 
 
 class DownloadError(Exception):
@@ -24,7 +24,7 @@ class MediaDownloader:
         
     def _get_ydl_opts(self, output_path: Path) -> Dict[str, Any]:
         """Get yt-dlp options for downloading"""
-        return {
+        opts: Dict[str, Any] = {
             'outtmpl': str(output_path / '%(id)s.%(ext)s'),
             'format': 'best[ext=mp4]/best',
             'quiet': True,
@@ -37,18 +37,22 @@ class MediaDownloader:
             'match_filter': yt_dlp.utils.match_filter_func(
                 f'duration <= {MAX_VIDEO_DURATION}'
             ) if MAX_VIDEO_DURATION else None,
-            # Add cookies from browser if needed (uncomment if authentication required)
-            # 'cookiesfrombrowser': ('chrome',),
         }
-    
+        if YTDLP_COOKIES_FILE:
+            opts['cookiefile'] = YTDLP_COOKIES_FILE
+        return opts
+
     def _get_info_opts(self) -> Dict[str, Any]:
         """Get yt-dlp options for extracting info only"""
-        return {
+        opts: Dict[str, Any] = {
             'quiet': True,
             'no_warnings': True,
             'extract_flat': False,
             'skip_download': True,
         }
+        if YTDLP_COOKIES_FILE:
+            opts['cookiefile'] = YTDLP_COOKIES_FILE
+        return opts
     
     async def get_media_info(self, url: str) -> Dict[str, Any]:
         """

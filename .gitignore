@@ -12,3 +12,5 @@ wheels/
 # Secrets
 .env
 cookies.txt
+.vercel
+.env*

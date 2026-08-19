@@ -1,14 +1,23 @@
 """
-Media downloader service using yt-dlp
+Media downloader service using yt-dlp, with instaloader tried first for
+Instagram URLs (works anonymously, no cookies needed - yt-dlp is the
+fallback for when Instagram rate-limits/blocks the anonymous path).
 """
+import logging
 import os
+import re
 import uuid
 import asyncio
 from pathlib import Path
 from typing import Optional, Dict, Any
+import instaloader
 import yt_dlp
 
 from config import DOWNLOAD_DIR, MAX_VIDEO_DURATION, YTDLP_COOKIES_FILE
+
+logger = logging.getLogger(__name__)
+
+_IG_SHORTCODE_RE = re.compile(r'instagram\.com/(?:reel|reels|p|tv)/([A-Za-z0-9_-]+)')
 
 
 class DownloadError(Exception):
@@ -54,16 +63,45 @@ class MediaDownloader:
             opts['cookiefile'] = YTDLP_COOKIES_FILE
         return opts
     
+    def _extract_instaloader_info(self, url: str) -> Optional[Dict[str, Any]]:
+        """Try instaloader (anonymous, no cookies) for an Instagram URL. Returns None on any failure."""
+        match = _IG_SHORTCODE_RE.search(url)
+        if not match:
+            return None
+        try:
+            context = instaloader.InstaloaderContext(quiet=True)
+            post = instaloader.Post.from_shortcode(context, match.group(1))
+            return {
+                'id': post.shortcode,
+                'title': f"Video by {post.owner_username}",
+                'description': post.caption or '',
+                'duration': post.video_duration if post.is_video else 0,
+                'uploader': post.owner_username,
+                'thumbnail': post.url,
+                'view_count': post.video_view_count if post.is_video else 0,
+                'like_count': post.likes,
+                'platform': 'Instagram',
+                'video_url': post.video_url if post.is_video else post.url,
+            }
+        except Exception as e:
+            logger.info("instaloader: falling back to yt-dlp for '%s' (%s)", url, e)
+            return None
+
     async def get_media_info(self, url: str) -> Dict[str, Any]:
         """
         Extract media information without downloading
-        
+
         Args:
             url: The media URL
-            
+
         Returns:
             Dictionary with media information
         """
+        loop = asyncio.get_event_loop()
+        instaloader_info = await loop.run_in_executor(None, self._extract_instaloader_info, url)
+        if instaloader_info is not None:
+            return instaloader_info
+
         def _extract_info():
             with yt_dlp.YoutubeDL(self._get_info_opts()) as ydl:
                 try:
@@ -101,9 +139,8 @@ class MediaDownloader:
                     }
                 except Exception as e:
                     raise DownloadError(f"Failed to extract info: {str(e)}")
-        
+
         # Run in thread pool to not block async event loop
-        loop = asyncio.get_event_loop()
         return await loop.run_in_executor(None, _extract_info)
     
     async def download_media(self, url: str) -> Dict[str, Any]:

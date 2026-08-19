@@ -9,6 +9,7 @@ dependencies = [
     "fastapi==0.109.2",
     "google-genai>=1.2.0",
     "httpx==0.26.0",
+    "instaloader",
     "pydantic==2.6.1",
     "python-dotenv==1.0.1",
     "python-multipart==0.0.9",

@@ -1,6 +1,7 @@
 fastapi==0.109.2
 uvicorn[standard]==0.27.1
 yt-dlp
+instaloader
 google-genai
 python-multipart==0.0.9
 pydantic==2.6.1

@@ -56,7 +56,7 @@ def get_auth() -> AuthPort:
     if provider == "supabase":
         supabase_url = _env_clean("SUPABASE_URL")
         supabase_api_key = _env_clean("SUPABASE_PUBLISHABLE_KEY") or _env_clean("SUPABASE_SECRET_KEY")
-        allow_fallback = os.getenv("AUTH_ALLOW_HEADER_FALLBACK", "1") != "0"
+        allow_fallback = os.getenv("AUTH_ALLOW_HEADER_FALLBACK", "0") == "1"
         if supabase_url and supabase_api_key:
             _auth_singleton = SupabaseAuthAdapter(
                 supabase_url=supabase_url,

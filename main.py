@@ -234,6 +234,36 @@ def _error_response(
     )
 
 
+# ponytail: per-instance in-memory limiter, resets on cold start / not shared
+# across concurrent instances. Upgrade to a shared store (Supabase/Redis) if
+# abuse survives instance churn.
+_RATE_LIMITED_PATHS = frozenset({"/api/content", "/api/summarize", "/api/summarize-quick"})
+_RATE_LIMIT_MAX = 10
+_RATE_LIMIT_WINDOW_S = 60.0
+_rate_limit_hits: dict[str, list[float]] = defaultdict(list)
+
+
+@app.middleware("http")
+async def rate_limit_middleware(request: Request, call_next):
+    if request.url.path in _RATE_LIMITED_PATHS:
+        key = request.headers.get("x-user-id") or (request.client.host if request.client else "unknown")
+        now = time.monotonic()
+        hits = _rate_limit_hits[key]
+        cutoff = now - _RATE_LIMIT_WINDOW_S
+        while hits and hits[0] < cutoff:
+            hits.pop(0)
+        if len(hits) >= _RATE_LIMIT_MAX:
+            return _error_response(
+                request_id=request.headers.get("x-request-id") or str(uuid.uuid4()),
+                code="RATE_LIMITED",
+                message="Too many requests. Please slow down and try again shortly.",
+                retryable=True,
+                status_code=429,
+            )
+        hits.append(now)
+    return await call_next(request)
+
+
 @app.middleware("http")
 async def request_context_and_metrics_middleware(request: Request, call_next):
     request_id = request.headers.get("x-request-id") or str(uuid.uuid4())

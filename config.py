@@ -46,6 +46,7 @@ else:
     DOWNLOAD_DIR = Path(os.getenv("DOWNLOAD_DIR", BASE_DIR / "downloads"))
 
 MAX_VIDEO_DURATION = int(os.getenv("MAX_VIDEO_DURATION", 300))  # 5 minutes max
+MAX_VIDEO_BYTES = int(os.getenv("MAX_VIDEO_BYTES", 200 * 1024 * 1024))  # 200MB max
 
 # Ensure download directory exists
 DOWNLOAD_DIR.mkdir(parents=True, exist_ok=True)
@@ -55,13 +56,14 @@ GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
 
 # CORS — comma-separated list of allowed origins, e.g.
 #   CORS_ORIGINS=https://myapp.com,https://staging.myapp.com
-# Defaults to "*" (all origins) only when the env var is absent or empty,
-# which is acceptable in local dev but should be locked down in production.
+# The only real client today is the native RN app, which never sends an
+# Origin header, so there's no legitimate browser origin to allow by default.
+# Set CORS_ORIGINS explicitly if a web frontend is added later.
 _cors_raw = os.getenv("CORS_ORIGINS", "").strip()
 CORS_ORIGINS = (
     [o.strip() for o in _cors_raw.split(",") if o.strip()]
     if _cors_raw
-    else ["*"]
+    else []
 )
 
 # -----------------------------------------------------------------------------

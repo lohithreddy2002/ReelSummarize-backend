@@ -14,7 +14,7 @@ import httpx
 import instaloader
 import yt_dlp
 
-from config import DOWNLOAD_DIR, MAX_VIDEO_DURATION, YTDLP_COOKIES_FILE
+from config import DOWNLOAD_DIR, MAX_VIDEO_DURATION, MAX_VIDEO_BYTES, YTDLP_COOKIES_FILE
 
 logger = logging.getLogger(__name__)
 
@@ -152,8 +152,17 @@ class MediaDownloader:
         async with httpx.AsyncClient(timeout=60.0, follow_redirects=True) as client:
             async with client.stream('GET', video_url) as resp:
                 resp.raise_for_status()
+                content_length = resp.headers.get('content-length')
+                if content_length and int(content_length) > MAX_VIDEO_BYTES:
+                    raise DownloadError(f"Video too large ({content_length} bytes, max {MAX_VIDEO_BYTES})")
+                written = 0
                 with open(dest, 'wb') as f:
                     async for chunk in resp.aiter_bytes(chunk_size=1 << 16):
+                        written += len(chunk)
+                        if written > MAX_VIDEO_BYTES:
+                            f.close()
+                            dest.unlink(missing_ok=True)
+                            raise DownloadError(f"Video exceeded max size of {MAX_VIDEO_BYTES} bytes during download")
                         f.write(chunk)
         return {
             **info,

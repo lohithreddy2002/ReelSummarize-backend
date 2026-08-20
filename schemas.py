@@ -2,12 +2,24 @@
 Pydantic schemas for API request/response validation
 """
 from typing import Optional, Literal, List
-from pydantic import BaseModel, HttpUrl, Field
+from urllib.parse import urlparse
+from pydantic import BaseModel, HttpUrl, Field, field_validator
+
+_ALLOWED_MEDIA_HOSTS = frozenset({"instagram.com", "www.instagram.com", "instagr.am"})
+
+
+def _validate_media_url(value: str) -> str:
+    parsed = urlparse(value)
+    host = (parsed.hostname or "").lower()
+    if parsed.scheme != "https" or host not in _ALLOWED_MEDIA_HOSTS:
+        raise ValueError("source_url must be an https instagram.com/instagr.am URL")
+    return value
 
 
 class SummarizeRequest(BaseModel):
     """Request schema for summarization endpoint"""
-    url: str = Field(..., description="URL of the reel/video to summarize")
+    url: str = Field(..., max_length=2048, description="URL of the reel/video to summarize")
+    _validate_url = field_validator("url")(_validate_media_url)
     prefer_video_analysis: bool = Field(
         default=True,
         description="Whether to prefer video analysis over metadata-only"
@@ -56,7 +68,8 @@ class HealthResponse(BaseModel):
 
 class InfoRequest(BaseModel):
     """Request schema for info endpoint"""
-    url: str = Field(..., description="URL to get information about")
+    url: str = Field(..., max_length=2048, description="URL to get information about")
+    _validate_url = field_validator("url")(_validate_media_url)
 
 
 class InfoResponse(BaseModel):
@@ -116,7 +129,8 @@ class GeocodeResponse(BaseModel):
 
 
 class CreateContentRequest(BaseModel):
-    source_url: str = Field(..., description="Source reel/post URL")
+    source_url: str = Field(..., max_length=2048, description="Source reel/post URL")
+    _validate_url = field_validator("source_url")(_validate_media_url)
 
 
 class ContentCard(BaseModel):

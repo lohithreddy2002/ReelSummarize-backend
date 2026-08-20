@@ -10,6 +10,7 @@ import uuid
 import asyncio
 from pathlib import Path
 from typing import Optional, Dict, Any
+import httpx
 import instaloader
 import yt_dlp
 
@@ -143,13 +144,32 @@ class MediaDownloader:
         # Run in thread pool to not block async event loop
         return await loop.run_in_executor(None, _extract_info)
     
+    async def _download_direct_url(
+        self, video_url: str, output_path: Path, info: Dict[str, Any], request_id: str
+    ) -> Dict[str, Any]:
+        """Download an already-resolved CDN video_url (from instaloader/yt-dlp info) directly."""
+        dest = output_path / f"{info.get('id') or request_id}.mp4"
+        async with httpx.AsyncClient(timeout=60.0, follow_redirects=True) as client:
+            async with client.stream('GET', video_url) as resp:
+                resp.raise_for_status()
+                with open(dest, 'wb') as f:
+                    async for chunk in resp.aiter_bytes(chunk_size=1 << 16):
+                        f.write(chunk)
+        return {
+            **info,
+            'file_path': str(dest),
+            'request_id': request_id,
+        }
+
     async def download_media(self, url: str) -> Dict[str, Any]:
         """
-        Download media from URL
-        
+        Download media from URL. Tries instaloader/yt-dlp info + a direct CDN
+        download first (fast, no extra extraction pass); falls back to a full
+        yt-dlp download if that fails for any reason.
+
         Args:
             url: The media URL
-            
+
         Returns:
             Dictionary with download info including file path
         """
@@ -157,7 +177,14 @@ class MediaDownloader:
         request_id = str(uuid.uuid4())[:8]
         output_path = self.download_dir / request_id
         output_path.mkdir(parents=True, exist_ok=True)
-        
+
+        try:
+            info = await self.get_media_info(url)
+            if info.get('video_url'):
+                return await self._download_direct_url(info['video_url'], output_path, info, request_id)
+        except Exception as e:
+            logger.info("direct video_url download failed, falling back to yt-dlp download: %s", e)
+
         def _download():
             opts = self._get_ydl_opts(output_path)
             with yt_dlp.YoutubeDL(opts) as ydl:
@@ -184,6 +211,8 @@ class MediaDownloader:
                         'duration': info.get('duration', 0),
                         'uploader': info.get('uploader', ''),
                         'thumbnail': info.get('thumbnail', ''),
+                        'view_count': info.get('view_count', 0),
+                        'like_count': info.get('like_count', 0),
                         'file_path': str(downloaded_file) if downloaded_file else None,
                         'request_id': request_id,
                         'platform': info.get('extractor_key', 'Unknown'),

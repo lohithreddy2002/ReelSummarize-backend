@@ -78,15 +78,18 @@ class ContentService:
 
         await self.persistence.update_content(content_id, owner_user_id, status="processing")
         await self.persistence.update_job(job.id, status="processing", stage="metadata", progress_percent=15)
+        info: dict = {}
         try:
             t0 = time.monotonic()
-            info = await downloader.get_media_info(content.source_url)
+            info = await downloader.download_media(content.source_url)
             _log_stage("metadata_fetch", t0)
 
             await self.persistence.update_job(job.id, stage="summarizing", progress_percent=45)
             summarizer = get_summarizer()
             t1 = time.monotonic()
-            result = await summarizer.summarize(video_path=None, metadata=info, prefer_video=False)
+            result = await summarizer.summarize(
+                video_path=info.get("file_path"), metadata=info, prefer_video=True
+            )
             _log_stage("summarize", t1)
             summary = result.get("summary") if result.get("success") else None
             title_generated = result.get("title")
@@ -172,3 +175,6 @@ class ContentService:
                 error_message=str(exc),
             )
             raise
+        finally:
+            if info.get("request_id"):
+                downloader.cleanup(info["request_id"])

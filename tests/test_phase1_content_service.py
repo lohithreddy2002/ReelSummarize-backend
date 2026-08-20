@@ -49,14 +49,19 @@ class Phase1ContentServiceTests(unittest.IsolatedAsyncioTestCase):
         self._orig_geocoder = content_service_module.geocoder
 
         class _FakeDownloader:
-            async def get_media_info(self, _url):
+            async def download_media(self, _url):
                 return {
                     "title": "Original reel title",
                     "thumbnail": "https://example.com/thumb.jpg",
                     "like_count": 12,
                     "comment_count": 2,
                     "view_count": 150,
+                    "file_path": None,
+                    "request_id": None,
                 }
+
+            def cleanup(self, _request_id):
+                pass
 
         content_service_module.downloader = _FakeDownloader()
         content_service_module.get_summarizer = lambda: _FakeSummarizer()
